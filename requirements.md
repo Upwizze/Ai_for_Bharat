@@ -1,166 +1,1083 @@
-# Requirements Document
+# CodeSensei - Technical Requirements Document
 
-## Introduction
+## 1. Executive Summary
 
-CodeSensei is a lightweight reasoning and learning layer that works alongside AI-powered IDEs to make AI-generated code understandable, explain failures, enable learning during development, and make AI agents more reliable and cost-efficient. It addresses critical problems with current AI coding tools including verbose responses, silent failures, high costs from failed iterations, stability issues, context loss, and poor code understanding.
+CodeSensei is a lightweight reasoning and learning layer for AI-powered IDEs that makes code reasoning, assumptions, and system behavior visible. This document outlines the technical requirements, architecture, and implementation specifications for building the solution.
 
-## Glossary
+## 2. System Overview
 
-- **CodeSensei**: The reasoning and learning layer system
-- **Reasoning_Engine**: Core component that identifies system concepts and tracks intent/assumptions
-- **Assumption_Registry**: Persistent storage system for code intent and assumptions
-- **Intent_Registry**: Persistent storage system for developer intent behind code decisions
-- **Bug_Reasoning_Mode**: Structured failure explanation system activated on demand
-- **Agent_Controller**: Component that intercepts and governs AI agent interactions
-- **Concept_Tracker**: System that identifies and tracks programming concepts (auth, async, data flow, etc.)
-- **IDE_Integration_Layer**: Plugin interface that integrates with IDEs (VS Code first) providing user interface and manual actions
-- **System_Memory**: Persistent knowledge storage that maintains understanding across sessions
-- **Learning_Mode**: Optional deeper understanding mode for enhanced code comprehension
-- **Failure_Classifier**: Component that identifies and categorizes failed assumptions
-- **Retry_Prevention_System**: System that avoids repeating previously failed approaches
+### 2.1 Core Objectives
+- Provide explainable AI-generated code
+- Enable structured failure reasoning and root cause analysis
+- Reduce AI token waste through intelligent context management
+- Maintain persistent system understanding across sessions
+- Support real-world learning while building actual projects
 
-## Requirements
+### 2.2 Key Principles
+- **Local-first architecture**: Core functionality runs locally for privacy and performance
+- **Cloud-enhanced capabilities**: AWS services provide AI reasoning and team collaboration
+- **Silent by default**: No interruptions during normal development
+- **On-demand reasoning**: Structured explanations available when requested
+- **Event-driven design**: Asynchronous, non-blocking operations
 
-### Requirement 1: Silent Initialization and Context Loading
+## 3. Technology Stack
 
-**User Story:** As a developer, I want CodeSensei to load previous context without interrupting my workflow, so that I can continue coding seamlessly with maintained understanding.
+### 3.1 IDE Layer
 
-#### Acceptance Criteria
+#### Frontend/Extension
+- **TypeScript**: Primary development language for type safety and IDE integration
+- **VS Code Extension API**: Native IDE integration and extension lifecycle management
+- **Webview API**: Rendering panels, diagrams, and interactive UI components
+- **React**: UI framework for webview components (panels, visualizations)
+- **Mermaid.js**: Diagram rendering for visual explanations
 
-1. WHEN CodeSensei starts, THE System SHALL load previous session context without displaying notifications or prompts
-2. WHEN loading context, THE System SHALL restore all previously identified concepts and assumptions within 2 seconds
-3. WHEN context loading fails, THE System SHALL continue operation with empty context and log the failure silently
-4. WHEN multiple projects are open, THE System SHALL load context specific to the active project
-5. THE System SHALL maintain context loading performance regardless of project size
+#### Requirements:
+- VS Code Engine: `^1.85.0`
+- Node.js: `>=18.0.0`
+- TypeScript: `^5.0.0`
 
-### Requirement 2: Continuous Code Observation and Concept Tracking
+### 3.2 Code Analysis Layer
 
-**User Story:** As a developer, I want CodeSensei to continuously understand my code concepts during normal development, so that it builds comprehensive system knowledge without interrupting my flow.
+#### Tree-sitter - Multi-Language Code Parsing
+**Purpose**: Parse source code into Abstract Syntax Trees (AST) for analysis
 
-#### Acceptance Criteria
+**Capabilities**:
+- Parses code into Abstract Syntax Trees (AST)
+- Supports 40+ programming languages (JavaScript, TypeScript, Python, Java, Go, Rust, etc.)
+- Incremental parsing: Only analyzes changed code sections for performance
+- Powers concept detection and pattern matching
+- Error-tolerant parsing for incomplete code
 
-1. WHEN code is written or modified, THE Concept_Tracker SHALL identify system concepts (authentication, async operations, data flow, caching) automatically
-2. WHILE the developer is coding, THE System SHALL track concept relationships and dependencies without user intervention
-3. WHEN new concepts are detected, THE System SHALL update the concept registry silently
-4. WHEN existing concepts are modified, THE System SHALL update related assumptions and dependencies
-5. THE System SHALL maintain concept tracking accuracy above 85% for common programming patterns
+**Implementation Requirements**:
+- `tree-sitter` core library
+- Language-specific grammars: `tree-sitter-typescript`, `tree-sitter-python`, `tree-sitter-javascript`, etc.
+- Custom query patterns for concept detection
+- Incremental parsing cache management
 
-### Requirement 3: AI Agent Interception and Governance
+#### AST Parser Stack
+- **@babel/parser**: TypeScript and modern JavaScript parsing
+- **tree-sitter**: Multi-language support with incremental parsing
+- **acorn**: Lightweight JavaScript parser for quick analysis
 
-**User Story:** As a developer, I want CodeSensei to improve my AI agent interactions by injecting context and constraints, so that I get more relevant and cost-effective responses.
+**Requirements**:
+- Support for ES2023+ syntax
+- JSX/TSX support
+- Decorator and experimental syntax support
+- Source map generation for error reporting
 
-#### Acceptance Criteria
+### 3.3 API Layer
 
-1. WHEN an AI agent request is made, THE Agent_Controller SHALL intercept the request before sending
-2. WHEN intercepting requests, THE System SHALL inject relevant context from the Assumption_Registry and Intent_Registry
-3. WHEN injecting context, THE System SHALL add constraints to prevent verbose or irrelevant responses
-4. WHEN context injection occurs, THE System SHALL reduce token usage by at least 20% compared to ungoverned requests
-5. THE System SHALL maintain compatibility with existing AI agents (Cursor, Copilot, Cody)
+#### GraphQL API
+**Purpose**: Flexible, efficient data querying between IDE and backend services
 
-### Requirement 4: Intent and Assumption Capture
+**Requirements**:
+- **Apollo Server**: GraphQL server implementation
+- **GraphQL Code Generator**: Type-safe client/server code generation
+- **DataLoader**: Batch and cache database queries
+- **GraphQL Subscriptions**: Real-time updates for collaborative features
 
-**User Story:** As a developer, I want CodeSensei to record the intent behind my significant code decisions, so that future modifications maintain the original purpose and assumptions.
+**Schema Requirements**:
+```graphql
+type Query {
+  assumptions(codeLocation: CodeReference!): [Assumption!]!
+  bugReasoning(failureContext: FailureInput!): BugAnalysis!
+  concepts(filePattern: String!): [Concept!]!
+}
 
-#### Acceptance Criteria
+type Mutation {
+  recordAssumption(input: AssumptionInput!): Assumption!
+  markAssumptionFailed(id: ID!, reason: String!): Assumption!
+}
 
-1. WHEN significant code changes are detected, THE System SHALL identify the underlying intent automatically
-2. WHEN intent is captured, THE System SHALL store it in the Intent_Registry with timestamp and context
-3. WHEN assumptions are made in code, THE System SHALL record them in the Assumption_Registry
-4. WHEN recording intent, THE System SHALL link it to specific code locations and related concepts
-5. THE System SHALL capture intent for at least 90% of architectural decisions and design patterns
+type Subscription {
+  assumptionValidated(projectId: ID!): Assumption!
+}
+```
 
-### Requirement 5: Execution Monitoring and Failure Classification
+### 3.4 Backend Compute Layer
 
-**User Story:** As a developer, I want CodeSensei to identify when my code fails and classify the type of failure, so that I can understand what went wrong instead of guessing.
+#### Python Services
+**Purpose**: Heavy computational tasks, ML model integration, and data processing
 
-#### Acceptance Criteria
+**Components**:
+- **FastAPI**: High-performance API framework for Python services
+- **Pydantic**: Data validation and settings management
+- **asyncio**: Asynchronous I/O for concurrent operations
 
-1. WHEN code execution fails, THE Failure_Classifier SHALL categorize the failure type (logic error, assumption violation, integration issue)
-2. WHEN failures occur, THE System SHALL identify which assumptions were violated
-3. WHEN classifying failures, THE System SHALL provide structured explanations instead of generic error messages
-4. WHEN multiple failures occur, THE System SHALL prioritize the most likely root cause
-5. THE System SHALL achieve 80% accuracy in failure classification for common error patterns
+**Use Cases**:
+- Complex AST analysis and pattern matching
+- Machine learning model inference
+- Data transformation and aggregation
+- Integration with Python-based AI libraries
 
-### Requirement 6: Bug Reasoning Mode
+**Requirements**:
+- Python: `>=3.11`
+- FastAPI: `^0.109.0`
+- Pydantic: `^2.0.0`
 
-**User Story:** As a developer, I want to activate Bug Reasoning Mode when I encounter issues, so that I get structured explanations of what went wrong and why.
+### 3.5 Event-Driven Architecture
 
-#### Acceptance Criteria
+#### Amazon EventBridge + AWS Step Functions
+**Purpose**: Orchestrate analysis pipelines and coordinate distributed workflows
 
-1. WHEN Bug Reasoning Mode is activated, THE System SHALL analyze the current failure context
-2. WHEN analyzing failures, THE System SHALL present visual reasoning including system flows and failure paths
-3. WHEN providing explanations, THE System SHALL reference violated assumptions and related concepts
-4. WHEN in Bug Reasoning Mode, THE System SHALL suggest specific debugging approaches based on failure classification
-5. THE System SHALL provide actionable insights in at least 75% of Bug Reasoning Mode activations
+**Event-Driven Workflow**:
+1. **File changes trigger analysis pipelines automatically**
+   - IDE file save → EventBridge event → Step Functions workflow
+   - Incremental analysis based on changed lines
+   - Parallel concept detection and intent analysis
 
-### Requirement 7: Learning Mode and Visual Reasoning
+2. **AI requests intercepted and enriched in real-time**
+   - Developer requests AI assistance → EventBridge intercepts
+   - Fetch relevant assumptions and constraints from registry
+   - Enrich prompt with context → Forward to AI tool
+   - Capture and analyze AI response
 
-**User Story:** As a developer, I want optional Learning Mode to provide deeper understanding of my codebase, so that I can learn system architecture and patterns without tutorials.
+3. **Failures activate bug reasoning mode**
+   - Test failure or runtime error → EventBridge event
+   - Step Functions orchestrates: assumption validation → failure classification → explanation generation
+   - Results stored and displayed to developer
 
-#### Acceptance Criteria
+4. **Everything asynchronous - no blocking the developer**
+   - All analysis runs in background
+   - Non-blocking UI updates via subscriptions
+   - Progressive results as analysis completes
 
-1. WHEN Learning Mode is activated, THE System SHALL provide enhanced explanations of system concepts and relationships
-2. WHEN in Learning Mode, THE System SHALL generate visual representations of architecture, data flow, and concept relationships
-3. WHEN providing learning content, THE System SHALL focus on real project understanding rather than generic tutorials
-4. WHEN Learning Mode is disabled, THE System SHALL return to silent operation
-5. THE System SHALL adapt learning content to the developer's demonstrated knowledge level
+**Implementation Requirements**:
+- EventBridge event schemas for all trigger types
+- Step Functions state machines for each workflow
+- Error handling and retry logic
+- Dead letter queues for failed events
+- CloudWatch integration for monitoring
 
-### Requirement 8: Retry Prevention System
+**Event Types**:
+```json
+{
+  "fileChanged": {
+    "filePath": "string",
+    "changeType": "edit|create|delete",
+    "changedLines": [{"start": 0, "end": 0}]
+  },
+  "aiRequestIntercepted": {
+    "requestId": "string",
+    "originalPrompt": "string",
+    "codeContext": "string"
+  },
+  "failureDetected": {
+    "failureType": "test|runtime|build",
+    "errorMessage": "string",
+    "stackTrace": "string",
+    "codeLocation": {}
+  }
+}
+```
 
-**User Story:** As a developer, I want CodeSensei to prevent me from repeating failed approaches, so that I don't waste time and credits on solutions that have already been tried.
+## 4. AWS Services Architecture
 
-#### Acceptance Criteria
+### 4.1 Compute Services
 
-1. WHEN a solution approach fails, THE Retry_Prevention_System SHALL record the failed approach and context
-2. WHEN similar approaches are attempted, THE System SHALL warn about previous failures
-3. WHEN preventing retries, THE System SHALL suggest alternative approaches based on failure history
-4. WHEN approaches succeed after modification, THE System SHALL update the success/failure patterns
-5. THE System SHALL reduce repeated failed attempts by at least 60%
+#### AWS Lambda (Serverless Functions)
+**Purpose**: Execute analysis tasks on-demand without managing servers
 
-### Requirement 9: Persistent System Memory
+**Lambda Functions**:
+1. **ConceptDetectionFunction**
+   - Runtime: Node.js 20.x
+   - Memory: 512 MB
+   - Timeout: 30 seconds
+   - Trigger: EventBridge (file change events)
+   - Output: Detected concepts → DynamoDB
 
-**User Story:** As a developer, I want CodeSensei to maintain understanding across coding sessions, so that knowledge accumulates over time and improves system effectiveness.
+2. **IntentAnalysisFunction**
+   - Runtime: Python 3.11
+   - Memory: 1024 MB
+   - Timeout: 60 seconds
+   - Trigger: EventBridge (code change events)
+   - Output: Intent records → DynamoDB
 
-#### Acceptance Criteria
+3. **AssumptionValidationFunction**
+   - Runtime: Node.js 20.x
+   - Memory: 512 MB
+   - Timeout: 45 seconds
+   - Trigger: Step Functions
+   - Output: Validation results → DynamoDB
 
-1. WHEN sessions end, THE System_Memory SHALL persist all captured concepts, assumptions, and intent
-2. WHEN new sessions start, THE System SHALL restore previous understanding without data loss
-3. WHEN system memory grows large, THE System SHALL optimize storage while maintaining critical information
-4. WHEN working across multiple devices, THE System SHALL synchronize system memory appropriately
-5. THE System SHALL maintain memory persistence with 99.9% reliability
+4. **BugReasoningFunction**
+   - Runtime: Python 3.11
+   - Memory: 2048 MB
+   - Timeout: 120 seconds
+   - Trigger: EventBridge (failure events)
+   - Integration: Amazon Bedrock
+   - Output: Structured bug analysis → S3 + DynamoDB
 
-### Requirement 10: IDE Integration Layer
+**Requirements**:
+- VPC configuration for secure access to resources
+- IAM roles with least-privilege permissions
+- Environment variables for configuration
+- Lambda layers for shared dependencies
+- Provisioned concurrency for critical functions
 
-**User Story:** As a developer, I want a clean IDE plugin that provides reasoning panels and manual actions, so that I can interact with CodeSensei when needed without workflow disruption.
+#### AWS Fargate (Containerized Reasoning Engine)
+**Purpose**: Run long-running or resource-intensive analysis tasks
 
-#### Acceptance Criteria
+**Use Cases**:
+- Deep codebase analysis (full project scan)
+- Historical pattern analysis
+- ML model training and fine-tuning
+- Batch processing of assumption validation
 
-1. WHEN the IDE starts, THE IDE_Integration_Layer SHALL initialize the reasoning panel interface
-2. WHEN manual actions are needed, THE System SHALL provide clear, contextual options in the reasoning panel
-3. WHEN displaying information, THE System SHALL use non-intrusive UI elements that don't block coding
-4. WHEN the reasoning panel is closed, THE System SHALL continue silent operation
-5. THE System SHALL maintain IDE plugin compatibility across IDE updates
+**Container Specifications**:
+- Base Image: `node:20-alpine` or `python:3.11-slim`
+- CPU: 2 vCPU
+- Memory: 4 GB
+- Auto-scaling: 1-10 tasks based on queue depth
+- Health checks: `/health` endpoint
 
-### Requirement 11: Cost and Performance Optimization
+**Requirements**:
+- ECS cluster configuration
+- Task definitions with resource limits
+- Application Load Balancer for HTTP endpoints
+- CloudWatch Container Insights
+- ECR for container image storage
 
-**User Story:** As a developer, I want CodeSensei to reduce AI interaction costs and improve response quality, so that I can use AI tools more efficiently and effectively.
+### 4.2 AI/ML Services
 
-#### Acceptance Criteria
+#### Amazon Bedrock (LLM Integration for Reasoning)
+**Purpose**: Core intelligence layer for code understanding and explanation generation
 
-1. WHEN AI interactions occur, THE System SHALL reduce token usage by at least 20% through context injection
-2. WHEN preventing retries, THE System SHALL reduce failed iteration costs by at least 40%
-3. WHEN providing responses, THE System SHALL improve response relevance by at least 30%
-4. WHEN operating continuously, THE System SHALL maintain low CPU and memory overhead (< 5% system resources)
-5. THE System SHALL demonstrate measurable cost savings within 30 days of usage
+**Primary Use Cases**:
 
-### Requirement 12: Multi-Language and Framework Support
+1. **Assumption Extraction**
+   ```
+   Input: Code snippet
+   Bedrock (Claude 3.5 Sonnet) →
+   Output: "This function assumes user is authenticated"
+   ```
 
-**User Story:** As a developer working with different languages and frameworks, I want CodeSensei to understand concepts across my technology stack, so that it provides consistent value regardless of what I'm building.
+2. **Bug Reasoning**
+   ```
+   Input: Failed Code + Context
+   Bedrock (Claude 3.5 Sonnet) →
+   Output: Structured explanation of WHY it failed
+   ```
 
-#### Acceptance Criteria
+3. **Intent Detection**
+   ```
+   Input: Code changes (git diff)
+   Bedrock (Claude 3 Haiku) →
+   Output: "Developer is implementing OAuth refresh flow"
+   ```
 
-1. WHEN working with different programming languages, THE Concept_Tracker SHALL identify language-specific patterns and concepts
-2. WHEN using different frameworks, THE System SHALL understand framework-specific architectural patterns
-3. WHEN switching between languages in a project, THE System SHALL maintain concept relationships across language boundaries
-4. WHEN new languages or frameworks are encountered, THE System SHALL learn and adapt to new patterns
-5. THE System SHALL support at least 5 major programming languages and 10 popular frameworks at launch
+**Model Selection Strategy**:
+- **Claude 3.5 Sonnet**: Complex reasoning, bug analysis, detailed explanations
+  - Use for: Bug reasoning mode, deep assumption extraction
+  - Cost: ~$3 per 1M input tokens
+  
+- **Claude 3 Haiku**: Fast, cost-effective for simple tasks
+  - Use for: Concept detection, intent analysis, quick validations
+  - Cost: ~$0.25 per 1M input tokens
+
+- **Amazon Titan Embeddings**: Semantic search and similarity
+  - Use for: Finding similar code patterns, assumption matching
+  - Cost: ~$0.10 per 1M tokens
+
+**Implementation Requirements**:
+- Bedrock API integration via AWS SDK
+- Prompt engineering and template management
+- Response parsing and structured output extraction
+- Token usage tracking and cost monitoring
+- Caching layer for repeated queries (90% cost reduction)
+- Rate limiting and quota management
+
+**Prompt Templates**:
+```python
+ASSUMPTION_EXTRACTION_PROMPT = """
+Analyze the following code and extract all implicit assumptions:
+
+Code:
+{code_snippet}
+
+Context:
+{surrounding_context}
+
+Return a JSON array of assumptions with:
+- description: What is assumed
+- type: precondition|postcondition|invariant|dependency
+- confidence: 0.0-1.0
+- reasoning: Why this is an assumption
+"""
+```
+
+#### Amazon SageMaker (Custom ML Models)
+**Purpose**: Train and deploy custom models for specialized tasks
+
+**Use Cases**:
+- Custom code pattern recognition models
+- Failure prediction models
+- Developer behavior modeling
+- Code quality scoring
+
+**Requirements**:
+- SageMaker training jobs for model development
+- SageMaker endpoints for real-time inference
+- Model registry for version management
+- A/B testing infrastructure
+
+#### AWS Lambda with Bedrock (Serverless AI Calls)
+**Purpose**: Combine Lambda's scalability with Bedrock's intelligence
+
+**Architecture**:
+```
+EventBridge → Lambda → Bedrock API → Process Response → Store Results
+```
+
+**Optimization Strategies**:
+- Prompt caching to reduce costs
+- Batch processing for multiple requests
+- Async invocation for non-critical tasks
+- Response streaming for large outputs
+
+### 4.3 Storage Services
+
+#### Amazon S3 (Object Storage)
+**Purpose**: Long-term storage, backups, and team synchronization
+
+**Buckets**:
+1. **Assumption Registry Backups**
+   - Lifecycle: Transition to Glacier after 90 days
+   - Versioning: Enabled
+   - Encryption: SSE-S3
+
+2. **Team Sync Storage**
+   - Cross-region replication for global teams
+   - Event notifications for real-time sync
+   - Presigned URLs for secure access
+
+3. **Bug Analysis Reports**
+   - Structured JSON reports
+   - Indexed by project, timestamp, failure type
+   - Queryable via Athena
+
+**Requirements**:
+- S3 bucket policies for access control
+- CloudFront distribution for fast global access
+- S3 Select for efficient querying
+- Event notifications to EventBridge
+
+#### Amazon DynamoDB (NoSQL Database)
+**Purpose**: Fast, scalable storage for assumptions, concepts, and failures
+
+**Tables**:
+
+1. **AssumptionRecords**
+   ```
+   PK: projectId#fileHash
+   SK: assumptionId
+   Attributes: intent, assumptions[], tradeoffs[], status, timestamps
+   GSI: status-index (query by validation status)
+   ```
+
+2. **ConceptMap**
+   ```
+   PK: projectId
+   SK: conceptId
+   Attributes: name, category, codeLocations[], confidenceScore
+   GSI: category-index
+   ```
+
+3. **FailureHistory**
+   ```
+   PK: projectId#codeLocation
+   SK: timestamp
+   Attributes: errorMessage, attemptedFix, reason, resolved
+   TTL: 90 days
+   ```
+
+**Requirements**:
+- On-demand billing for variable workloads
+- Point-in-time recovery enabled
+- DynamoDB Streams for change data capture
+- Global tables for multi-region support (optional)
+
+#### Local Storage (SQLite + JSON)
+**Purpose**: Offline-first, Git-friendly local storage
+
+**Structure**:
+```
+.codesensei/
+├── registry.db (SQLite)
+├── assumptions/
+│   ├── auth-flow.json
+│   └── data-validation.json
+├── concepts/
+│   └── detected-patterns.json
+└── cache/
+    └── ast-cache.db
+```
+
+**Requirements**:
+- SQLite for structured queries
+- JSON files for human readability and Git diffs
+- Automatic sync with cloud storage (optional)
+- Conflict resolution for team collaboration
+
+### 4.4 API & Integration Services
+
+#### Amazon API Gateway (REST/WebSocket APIs)
+**Purpose**: Expose backend services to IDE extension
+
+**Endpoints**:
+- REST API: CRUD operations for assumptions, concepts
+- WebSocket API: Real-time updates and notifications
+- API Keys for authentication
+- Usage plans and throttling
+
+**Requirements**:
+- Custom domain with SSL certificate
+- Request/response validation
+- CORS configuration
+- CloudWatch logging
+
+#### AWS AppSync (GraphQL Managed Service)
+**Purpose**: Managed GraphQL API with real-time subscriptions
+
+**Features**:
+- Automatic DynamoDB integration
+- Real-time subscriptions for collaborative features
+- Offline sync support
+- Fine-grained access control
+
+**Schema**:
+```graphql
+type Assumption @model @auth(rules: [{allow: private}]) {
+  id: ID!
+  projectId: ID! @index(name: "byProject")
+  intent: String!
+  assumptions: [AssumptionDetail!]!
+  status: AssumptionStatus!
+  createdAt: AWSDateTime!
+}
+```
+
+#### Amazon EventBridge (Event-Driven Architecture)
+**Purpose**: Central event bus for all system events
+
+**Event Sources**:
+- IDE extension (file changes, AI requests)
+- Lambda functions (analysis complete)
+- S3 (new files uploaded)
+- DynamoDB Streams (data changes)
+
+**Event Targets**:
+- Step Functions (workflow orchestration)
+- Lambda functions (event processing)
+- SQS queues (buffering)
+- SNS topics (notifications)
+
+**Event Patterns**:
+```json
+{
+  "source": ["codesensei.ide"],
+  "detail-type": ["FileChanged", "AIRequestIntercepted", "FailureDetected"],
+  "detail": {
+    "projectId": ["project-123"]
+  }
+}
+```
+
+### 4.5 Monitoring & Observability
+
+#### Amazon CloudWatch
+**Purpose**: Centralized logging, metrics, and alarms
+
+**Metrics**:
+- Lambda execution duration and errors
+- Bedrock token usage and costs
+- API Gateway request counts and latency
+- DynamoDB read/write capacity
+- Custom metrics: assumptions validated, bugs reasoned, concepts detected
+
+**Logs**:
+- Lambda function logs
+- API Gateway access logs
+- Application logs from Fargate containers
+- Structured logging with JSON format
+
+**Alarms**:
+- High error rates (> 5%)
+- Bedrock cost threshold exceeded
+- Lambda timeout warnings
+- DynamoDB throttling
+
+#### AWS X-Ray
+**Purpose**: Distributed tracing for debugging and performance optimization
+
+**Trace Points**:
+- API Gateway → Lambda → Bedrock → DynamoDB
+- Step Functions workflow execution
+- Cross-service communication
+- Performance bottleneck identification
+
+### 4.6 Security Services
+
+#### AWS IAM (Identity and Access Management)
+**Purpose**: Fine-grained access control
+
+**Roles**:
+- Lambda execution roles (least privilege)
+- Fargate task roles
+- API Gateway invocation roles
+- Cross-account access roles (for team features)
+
+#### AWS Secrets Manager
+**Purpose**: Secure storage of sensitive configuration
+
+**Secrets**:
+- API keys for third-party integrations
+- Database credentials
+- Bedrock API keys (if using cross-account)
+- OAuth tokens for AI tool integration
+
+#### AWS KMS (Key Management Service)
+**Purpose**: Encryption key management
+
+**Use Cases**:
+- S3 bucket encryption
+- DynamoDB encryption at rest
+- Secrets Manager encryption
+- Lambda environment variable encryption
+
+### 4.7 DevOps & CI/CD
+
+#### AWS CodePipeline
+**Purpose**: Automated CI/CD pipeline
+
+**Stages**:
+1. Source: GitHub repository
+2. Build: CodeBuild (compile TypeScript, run tests)
+3. Test: Integration tests, E2E tests
+4. Deploy: Lambda functions, Fargate services, infrastructure updates
+
+#### AWS CodeBuild
+**Purpose**: Build and test automation
+
+**Build Specifications**:
+```yaml
+version: 0.2
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+  build:
+    commands:
+      - npm ci
+      - npm run build
+      - npm test
+  post_build:
+    commands:
+      - npm run package
+artifacts:
+  files:
+    - '**/*'
+```
+
+#### AWS CloudFormation / CDK
+**Purpose**: Infrastructure as Code
+
+**Requirements**:
+- CDK for TypeScript-based infrastructure definitions
+- Stack separation: networking, compute, storage, monitoring
+- Cross-stack references
+- Automated rollback on failure
+
+## 5. Functional Requirements
+
+### 5.1 IDE Integration
+
+#### FR-1: Silent Observation Mode
+- Monitor file changes without interrupting developer
+- Track AI tool interactions in background
+- Update registry incrementally
+- Performance: < 50ms overhead per file save
+
+#### FR-2: Manual Reasoning Commands
+- "Explain why this failed" command
+- "Show assumptions" for selected code
+- "Why this fix didn't work" analysis
+- Visual diagram generation
+
+#### FR-3: Webview Panel
+- Display assumptions and concepts
+- Show bug reasoning reports
+- Render Mermaid diagrams
+- Interactive exploration of system layers
+
+### 5.2 Code Analysis
+
+#### FR-4: Concept Detection
+- Detect authentication patterns
+- Identify async execution flows
+- Recognize data transformations
+- Detect caching strategies
+- Identify state management patterns
+
+#### FR-5: Intent Analysis
+- Extract developer intent from code changes
+- Classify changes by system layer
+- Identify architectural decisions
+- Track trade-offs and alternatives
+
+#### FR-6: Assumption Extraction
+- Automatically extract implicit assumptions
+- Classify assumption types (precondition, postcondition, invariant, dependency)
+- Assign confidence scores
+- Link assumptions to code locations
+
+### 5.3 Bug Reasoning
+
+#### FR-7: Failure Classification
+- Classify error types (syntax, logic, runtime)
+- Identify affected system layers
+- Compare expected vs actual behavior
+- Generate structured failure reports
+
+#### FR-8: Assumption Validation
+- Validate assumptions when failures occur
+- Identify which assumptions failed
+- Trace dependency chains
+- Mark failed assumptions in registry
+
+#### FR-9: Historical Analysis
+- Review previous fix attempts
+- Identify why fixes failed
+- Detect retry loops
+- Block known-bad solution paths
+
+### 5.4 AI Agent Control
+
+#### FR-10: Request Interception
+- Intercept AI tool requests before execution
+- Fetch relevant context from registry
+- Enrich prompts with constraints and assumptions
+- Block invalid retry paths
+
+#### FR-11: Response Capture
+- Tag AI-generated code
+- Extract implied assumptions
+- Record intent signals
+- Update registry automatically
+
+#### FR-12: Token Optimization
+- Filter irrelevant context
+- Cache repeated queries
+- Use appropriate model for task complexity
+- Track and report token usage
+
+### 5.5 Learning Modes
+
+#### FR-13: Progressive Learning Levels
+- Level 0: Silent mode (no learning)
+- Level 1: Passive hints (concept labels)
+- Level 2: Guided reasoning (Socratic questions)
+- Level 3: Concept deep dive (detailed explanations)
+- Level 4: Full tutorial (interactive exercises)
+
+#### FR-14: Adaptive Explanations
+- Adjust explanation depth based on developer expertise
+- Provide visual diagrams for complex concepts
+- Track learning progress
+- Suggest related patterns and concepts
+
+## 6. Non-Functional Requirements
+
+### 6.1 Performance
+
+#### NFR-1: Response Time
+- File save analysis: < 50ms
+- Concept detection: < 100ms
+- Bug reasoning: < 2 seconds
+- AI-powered analysis: < 5 seconds
+
+#### NFR-2: Resource Usage
+- Memory footprint: < 100MB (IDE extension)
+- CPU usage: < 5% during normal coding
+- Disk usage: < 50MB per project (local registry)
+
+#### NFR-3: Scalability
+- Support projects up to 1M lines of code
+- Handle 10,000+ assumptions per project
+- Support 1,000+ concurrent users (cloud services)
+
+### 6.2 Reliability
+
+#### NFR-4: Availability
+- IDE extension: 99.9% uptime (local)
+- Cloud services: 99.95% uptime (AWS SLA)
+- Graceful degradation when cloud unavailable
+
+#### NFR-5: Data Integrity
+- Automatic backups every 24 hours
+- Point-in-time recovery for last 30 days
+- Conflict resolution for team collaboration
+
+### 6.3 Security
+
+#### NFR-6: Data Privacy
+- Code never leaves local machine by default
+- Opt-in for cloud features
+- Encryption at rest and in transit
+- GDPR and SOC 2 compliance
+
+#### NFR-7: Access Control
+- Project-level isolation
+- Team-based permissions
+- API key authentication
+- Rate limiting and throttling
+
+### 6.4 Usability
+
+#### NFR-8: Developer Experience
+- Zero configuration for basic features
+- Intuitive command palette integration
+- Clear, actionable error messages
+- Comprehensive documentation
+
+#### NFR-9: Extensibility
+- Plugin system for custom analyzers
+- Custom concept definitions
+- Configurable learning modes
+- Integration with other tools
+
+## 7. Data Requirements
+
+### 7.1 Data Models
+
+#### Assumption Record
+```typescript
+interface AssumptionRecord {
+  id: string;
+  projectId: string;
+  codeLocation: CodeReference;
+  intent: string;
+  assumptions: Assumption[];
+  tradeoffs: Tradeoff[];
+  createdAt: timestamp;
+  lastValidated: timestamp;
+  status: 'valid' | 'failed' | 'unknown';
+  metadata: {
+    aiGenerated: boolean;
+    confidence: number;
+    tags: string[];
+  };
+}
+```
+
+#### Concept
+```typescript
+interface Concept {
+  id: string;
+  projectId: string;
+  name: string;
+  category: ConceptCategory;
+  codeLocations: CodeReference[];
+  confidenceScore: number;
+  relatedConcepts: string[];
+  detectedAt: timestamp;
+}
+```
+
+#### Failure Record
+```typescript
+interface FailureRecord {
+  id: string;
+  projectId: string;
+  codeLocation: CodeReference;
+  occurredAt: timestamp;
+  errorMessage: string;
+  stackTrace: string;
+  failedAssumptions: string[];
+  attemptedFixes: AttemptedFix[];
+  resolved: boolean;
+  resolution: string | null;
+}
+```
+
+### 7.2 Data Retention
+
+- Active assumptions: Indefinite
+- Failed assumptions: 90 days
+- Failure history: 90 days
+- Concept map: Indefinite
+- Bug analysis reports: 30 days (S3), 7 days (DynamoDB)
+- CloudWatch logs: 30 days
+
+### 7.3 Data Migration
+
+- Export format: JSON
+- Import from other tools: Plugin system
+- Backup format: Git-friendly JSON
+- Team sync: S3 + DynamoDB replication
+
+## 8. Integration Requirements
+
+### 8.1 AI Tool Integration
+
+#### Cursor AI
+- Intercept requests via LSP
+- Inject context into prompts
+- Capture generated code
+- Track token usage
+
+#### GitHub Copilot
+- Monitor completions via VS Code API
+- Extract assumptions from suggestions
+- Track acceptance rate
+- Analyze rejected suggestions
+
+#### Cody AI
+- Similar integration as Cursor
+- Support for custom commands
+- Context enrichment
+
+### 8.2 Version Control Integration
+
+#### Git
+- Track assumption changes in commits
+- Generate assumption diffs
+- Merge conflict resolution
+- Blame integration for assumption history
+
+### 8.3 Testing Framework Integration
+
+#### Jest/Vitest
+- Capture test failures
+- Link failures to assumptions
+- Generate test coverage for assumptions
+- Suggest tests for untested assumptions
+
+## 9. Development Phases
+
+### Phase 1: Foundation (Weeks 1-4)
+- VS Code extension scaffold
+- Basic assumption registry (local SQLite)
+- Manual annotation commands
+- Simple UI panel
+
+**Deliverables**:
+- Working VS Code extension
+- Local storage implementation
+- Basic CRUD operations
+- Documentation
+
+### Phase 2: Code Analysis (Weeks 5-8)
+- Tree-sitter integration
+- Concept detection engine
+- Pattern matching
+- AST-based analysis
+
+**Deliverables**:
+- Multi-language parsing
+- Concept detection for 5+ patterns
+- Performance benchmarks
+- Unit tests
+
+### Phase 3: AWS Integration (Weeks 9-12)
+- Lambda functions deployment
+- EventBridge setup
+- DynamoDB tables
+- S3 buckets
+
+**Deliverables**:
+- Cloud infrastructure (CDK)
+- Event-driven workflows
+- API Gateway endpoints
+- Monitoring dashboards
+
+### Phase 4: AI Integration (Weeks 13-16)
+- Amazon Bedrock integration
+- Prompt engineering
+- Assumption extraction
+- Bug reasoning mode
+
+**Deliverables**:
+- Bedrock API integration
+- Prompt templates
+- Response parsing
+- Cost optimization
+
+### Phase 5: Agent Control (Weeks 17-20)
+- AI request interception
+- Context enrichment
+- Response capture
+- Token optimization
+
+**Deliverables**:
+- AI tool integrations
+- Feedback loop implementation
+- Token usage tracking
+- Performance metrics
+
+### Phase 6: Learning Modes (Weeks 21-24)
+- Progressive learning UI
+- Adaptive explanations
+- Visual diagrams
+- Progress tracking
+
+**Deliverables**:
+- Learning mode implementation
+- Diagram generation
+- User preferences
+- Analytics
+
+## 10. Testing Requirements
+
+### 10.1 Unit Testing
+- Code coverage: > 80%
+- Test frameworks: Jest, Vitest
+- Mock AWS services with LocalStack
+- Snapshot testing for UI components
+
+### 10.2 Integration Testing
+- End-to-end workflows
+- AWS service integration
+- AI tool integration
+- Database operations
+
+### 10.3 Performance Testing
+- Load testing with Artillery
+- Stress testing Lambda functions
+- Memory profiling
+- Latency benchmarks
+
+### 10.4 Security Testing
+- Penetration testing
+- Dependency vulnerability scanning
+- IAM policy validation
+- Encryption verification
+
+## 11. Deployment Requirements
+
+### 11.1 VS Code Extension
+- Publish to VS Code Marketplace
+- Semantic versioning
+- Automated release pipeline
+- Update notifications
+
+### 11.2 AWS Infrastructure
+- Multi-region deployment (optional)
+- Blue-green deployment for Lambda
+- Canary releases for critical changes
+- Automated rollback on errors
+
+### 11.3 Monitoring
+- CloudWatch dashboards
+- Custom metrics
+- Alerting rules
+- Cost tracking
+
+## 12. Documentation Requirements
+
+### 12.1 User Documentation
+- Getting started guide
+- Feature documentation
+- Troubleshooting guide
+- FAQ
+
+### 12.2 Developer Documentation
+- Architecture overview
+- API reference
+- Contributing guide
+- Code style guide
+
+### 12.3 Operations Documentation
+- Deployment guide
+- Monitoring guide
+- Incident response playbook
+- Disaster recovery plan
+
+## 13. Success Metrics
+
+### 13.1 Developer Experience
+- Time to understand codebase: -50%
+- Debugging time: -40%
+- AI retry cycles: -60%
+- Developer satisfaction: > 4.5/5
+
+### 13.2 Cost Efficiency
+- Token usage per task: -50%
+- Failed AI iterations: -70%
+- Monthly AI costs: -40%
+
+### 13.3 Code Quality
+- Regression bugs: -30%
+- Code review time: -25%
+- Technical debt: -20%
+
+### 13.4 Adoption
+- Active users: 10,000+ in first year
+- Daily active usage: > 60%
+- Feature adoption: > 70%
+- Retention rate: > 85%
+
+## 14. Risks and Mitigations
+
+### 14.1 Technical Risks
+
+**Risk**: Bedrock API rate limits
+**Mitigation**: Implement caching, request queuing, fallback to local models
+
+**Risk**: Performance degradation on large codebases
+**Mitigation**: Incremental analysis, lazy loading, configurable depth
+
+**Risk**: AWS service outages
+**Mitigation**: Local-first architecture, graceful degradation, multi-region deployment
+
+### 14.2 Business Risks
+
+**Risk**: High AWS costs
+**Mitigation**: Cost monitoring, usage quotas, efficient model selection
+
+**Risk**: Low adoption
+**Mitigation**: Freemium model, extensive documentation, community building
+
+**Risk**: Competition from AI IDE vendors
+**Mitigation**: Focus on reasoning layer, not code generation; open architecture
+
+## 15. Future Enhancements
+
+### 15.1 Advanced Features
+- Multi-language support expansion (40+ languages)
+- Team collaboration features (real-time sync)
+- Custom concept definitions (user-defined patterns)
+- Integration with testing frameworks (automatic test generation)
+- Performance profiling integration
+- Security vulnerability detection
+
+### 15.2 AI Capabilities
+- Local LLM integration for privacy (Ollama, LM Studio)
+- Custom reasoning models (fine-tuned on project data)
+- Predictive failure detection (ML-based)
+- Automated assumption generation (proactive)
+
+### 15.3 Ecosystem Integration
+- CI/CD pipeline integration (GitHub Actions, GitLab CI)
+- Code review tool integration (GitHub PR, GitLab MR)
+- Documentation generation (automatic docs from assumptions)
+- Architecture diagram automation (visual system maps)
+
+## 16. Appendix
+
+### 16.1 Glossary
+- **Assumption**: An implicit condition that code relies on
+- **Concept**: A recognized pattern or architectural element
+- **Intent**: The developer's goal when writing code
+- **Reasoning Mode**: Active analysis and explanation generation
+- **Silent Mode**: Background observation without interruption
+
+### 16.2 References
+- VS Code Extension API: https://code.visualstudio.com/api
+- Tree-sitter Documentation: https://tree-sitter.github.io/tree-sitter/
+- Amazon Bedrock: https://aws.amazon.com/bedrock/
+- AWS Step Functions: https://aws.amazon.com/step-functions/
+- GraphQL Specification: https://graphql.org/
+
+### 16.3 Change Log
+- v1.0.0 (2024-02-14): Initial requirements document
